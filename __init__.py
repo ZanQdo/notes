@@ -7,18 +7,14 @@ def update_panel_category(self, context):
     in the addon preferences. It unregisters the panel, updates its
     bl_category attribute, and then re-registers it.
     """
-    # Unregister the panel to allow for re-registration with a new category
     try:
         bpy.utils.unregister_class(NOTES_PT_main_panel)
     except RuntimeError:
-        # The class may not have been registered yet, which is fine.
         pass
 
-    # Update the bl_category on the class itself
     prefs = context.preferences.addons[__name__].preferences
     NOTES_PT_main_panel.bl_category = prefs.category_name
     
-    # Re-register the panel with the updated category
     bpy.utils.register_class(NOTES_PT_main_panel)
 
 
@@ -38,41 +34,59 @@ class NotesAddonPreferences(bpy.types.AddonPreferences):
         layout.prop(self, "category_name")
 
 
-# Scene properties to store the notes
-class NotesSceneProperties(bpy.types.PropertyGroup):
-    main_notes: bpy.props.StringProperty(
-        name="Notes",
-        description="A space to write down your notes",
+# Property group for a single note item
+class NoteItem(bpy.types.PropertyGroup):
+    note: bpy.props.StringProperty(
+        name="Note",
+        description="A single note entry",
         default="",
     )
-    version_counter: bpy.props.IntProperty(
-        name="Version",
-        description="A counter for the project version",
+
+# Scene properties to store the collection of notes
+class NotesSceneProperties(bpy.types.PropertyGroup):
+    notes: bpy.props.CollectionProperty(type=NoteItem)
+    active_note_index: bpy.props.IntProperty(
+        name="Active Note Index",
+        description="Index of the currently displayed note",
         default=0,
-        min=0,
+        min=0
     )
 
-# Operators for version counter
-class WM_OT_increase_version(bpy.types.Operator):
-    """Increase the version counter"""
-    bl_idname = "notes.increase_version"
-    bl_label = "Increase Version"
+# Operators for note management
+class WM_OT_add_note(bpy.types.Operator):
+    """Add a new note"""
+    bl_idname = "notes.add_note"
+    bl_label = "Add Note"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        context.scene.notes_properties.version_counter += 1
+        notes_props = context.scene.notes_properties
+        new_note = notes_props.notes.add()
+        notes_props.active_note_index = len(notes_props.notes) - 1
         return {'FINISHED'}
 
-class WM_OT_decrease_version(bpy.types.Operator):
-    """Decrease the version counter"""
-    bl_idname = "notes.decrease_version"
-    bl_label = "Decrease Version"
+class WM_OT_next_note(bpy.types.Operator):
+    """Go to the next note"""
+    bl_idname = "notes.next_note"
+    bl_label = "Next Note"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        props = context.scene.notes_properties
-        if props.version_counter > 0:
-            props.version_counter -= 1
+        notes_props = context.scene.notes_properties
+        if notes_props.active_note_index < len(notes_props.notes) - 1:
+            notes_props.active_note_index += 1
+        return {'FINISHED'}
+
+class WM_OT_previous_note(bpy.types.Operator):
+    """Go to the previous note"""
+    bl_idname = "notes.previous_note"
+    bl_label = "Previous Note"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        notes_props = context.scene.notes_properties
+        if notes_props.active_note_index > 0:
+            notes_props.active_note_index -= 1
         return {'FINISHED'}
 
 
@@ -83,54 +97,60 @@ class NOTES_PT_main_panel(bpy.types.Panel):
     bl_idname = "NOTES_PT_main_panel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    # The bl_category will be dynamically set from preferences
     bl_category = 'Notes'
 
     def draw(self, context):
         layout = self.layout
-        scene = context.scene
-        notes_props = scene.notes_properties
+        notes_props = context.scene.notes_properties
+        
+        # Check if there are any notes
+        if len(notes_props.notes) > 0:
+            # Navigation Row
+            nav_row = layout.row(align=True)
+            nav_row.label(text=f"Version: {notes_props.active_note_index + 1} / {len(notes_props.notes)}")
+            
+            op_row = nav_row.row(align=True)
+            op_row.operator(WM_OT_previous_note.bl_idname, text="-")
+            op_row.operator(WM_OT_next_note.bl_idname, text="+")
+            
+            layout.separator()
 
-        # Version Counter UI
-        row = layout.row(align=True)
-        row.label(text="Version:")
-        row.operator(WM_OT_decrease_version.bl_idname, text="-")
-        row.prop(notes_props, "version_counter", text="")
-        row.operator(WM_OT_increase_version.bl_idname, text="+")
-
+            # Note Text Area
+            current_note = notes_props.notes[notes_props.active_note_index]
+            box = layout.box()
+            box.prop(current_note, "note", text="")
+        else:
+            layout.label(text="No notes yet. Create one!")
+            
         layout.separator()
+        
+        # "Add Note" button
+        layout.operator(WM_OT_add_note.bl_idname, text="Create New Note")
 
-        layout.label(text="Project Notes:")
-        # Use a box for a better text area look
-        box = layout.box()
-        box.prop(notes_props, "main_notes", text="")
 
 # Registration
 classes = (
     NotesAddonPreferences,
+    NoteItem,
     NotesSceneProperties,
-    WM_OT_increase_version,
-    WM_OT_decrease_version,
+    WM_OT_add_note,
+    WM_OT_next_note,
+    WM_OT_previous_note,
     NOTES_PT_main_panel,
 )
 
 def register():
-    # Register all classes
     for cls in classes:
         bpy.utils.register_class(cls)
         
-    # Set the initial category from saved preferences on startup
     prefs = bpy.context.preferences.addons[__name__].preferences
     NOTES_PT_main_panel.bl_category = prefs.category_name
 
-    # Add the property group to the scene
     bpy.types.Scene.notes_properties = bpy.props.PointerProperty(type=NotesSceneProperties)
 
 def unregister():
-    # Remove the property group from the scene
     del bpy.types.Scene.notes_properties
 
-    # Unregister all classes in reverse order
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
 
