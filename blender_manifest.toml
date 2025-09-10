@@ -1,0 +1,19 @@
+schema_version = "1.0.0"
+
+id = "snapshots"
+version = "1.0.0"
+name = "Notes"
+tagline = "Anotate your blend files"
+maintainer = "Daniel Salazar"
+type = "add-on"
+
+website = "https://superhivemarket.com/products/notes"
+
+tags = ["Pipeline"]
+
+blender_version_min = "4.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+copyright = ["2025 Daniel Salazar",]
+
