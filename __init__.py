@@ -16,7 +16,18 @@ def update_panel_category(self, context):
     NOTES_PT_main_panel.bl_category = prefs.category_name
     
     bpy.utils.register_class(NOTES_PT_main_panel)
-
+    
+# Handler for updating the status bar
+def update_status_bar(self, context):
+    """
+    Forces a redraw of the status bar area to ensure the note
+    version is updated visually.
+    """
+    for window in context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == 'STATUSBAR':
+                area.tag_redraw()
+    return None
 
 # Addon Preferences
 class NotesAddonPreferences(bpy.types.AddonPreferences):
@@ -40,6 +51,7 @@ class NoteItem(bpy.types.PropertyGroup):
         name="Note",
         description="A single note entry",
         default="",
+        update=update_status_bar # Trigger status bar update when note text changes
     )
 
 # Scene properties to store the collection of notes
@@ -49,7 +61,8 @@ class NotesSceneProperties(bpy.types.PropertyGroup):
         name="Active Note Index",
         description="Index of the currently displayed note",
         default=0,
-        min=0
+        min=0,
+        update=update_status_bar
     )
 
 # Operators for note management
@@ -63,6 +76,7 @@ class WM_OT_add_note(bpy.types.Operator):
         notes_props = context.scene.notes_properties
         new_note = notes_props.notes.add()
         notes_props.active_note_index = len(notes_props.notes) - 1
+        update_status_bar(self, context) # Manually update for new total
         return {'FINISHED'}
 
 class WM_OT_next_note(bpy.types.Operator):
@@ -127,6 +141,41 @@ class NOTES_PT_main_panel(bpy.types.Panel):
         # "Add Note" button
         layout.operator(WM_OT_add_note.bl_idname, text="Create New Note")
 
+# Function to draw the note version in the status bar
+def draw_note_status(self, context):
+    layout = self.layout
+    notes_props = context.scene.notes_properties
+    
+    if len(notes_props.notes) > 0:
+        layout.separator()
+
+        current_note_text = notes_props.notes[notes_props.active_note_index].note
+        note_info = ""
+        
+        if current_note_text:
+            version_prefix = f"Version: {notes_props.active_note_index + 1}. "
+            total_max_length = 80
+            note_max_length = total_max_length - len(version_prefix)
+
+            # Ensure note_max_length is not negative
+            if note_max_length < 0:
+                note_max_length = 0
+            
+            # Truncate the note if it's too long to fit in the status bar
+            if len(current_note_text) > note_max_length:
+                # Replace newlines with spaces for single-line display
+                display_text = current_note_text.replace('\n', ' ')[:note_max_length] + "..."
+            else:
+                display_text = current_note_text.replace('\n', ' ')
+            
+            note_info = f"{version_prefix}{display_text}"
+        else:
+            # If there's no note, just show the version number without a period
+            note_info = f"Version: {notes_props.active_note_index + 1}"
+
+        # Display the actual note text in the status bar
+        layout.label(text=note_info)
+
 
 # Registration
 classes = (
@@ -147,12 +196,20 @@ def register():
     NOTES_PT_main_panel.bl_category = prefs.category_name
 
     bpy.types.Scene.notes_properties = bpy.props.PointerProperty(type=NotesSceneProperties)
+    
+    # Append the draw function to the status bar
+    bpy.types.STATUSBAR_HT_header.append(draw_note_status)
+
 
 def unregister():
     del bpy.types.Scene.notes_properties
 
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
+        
+    # Remove the draw function from the status bar
+    bpy.types.STATUSBAR_HT_header.remove(draw_note_status)
+
 
 if __name__ == "__main__":
     register()
