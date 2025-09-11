@@ -140,7 +140,7 @@ class WM_OT_delete_note(bpy.types.Operator):
 # The UI Panel
 class NOTES_PT_main_panel(bpy.types.Panel):
     """Panel in the 3D View for notes"""
-    bl_label = "Notes and Info"
+    bl_label = "Notes"
     bl_idname = "NOTES_PT_main_panel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -159,28 +159,32 @@ class NOTES_PT_main_panel(bpy.types.Panel):
             nav_row.operator(WM_OT_next_note.bl_idname, text="", icon='TRIA_RIGHT')
             nav_row.operator(WM_OT_delete_note.bl_idname, text="", icon='TRASH')
 
-            # Date and Blender Version Info
+            # Date and Blender Version Info with Icons
             current_note = notes_props.notes[notes_props.active_note_index]
-            date_text = f"Date: {current_note.creation_date}" if current_note.creation_date else ""
             
-            # Get the Blender version the file was saved with
+            # Display date with clock icon in its own row
+            if current_note.creation_date:
+                row_date = layout.row()
+                row_date.label(text=f" {current_note.creation_date}", icon='TIME')
+
+            # Get the Blender version the file was saved with and display it in a new row
             file_version_tuple = bpy.data.version
             file_version_string = f"{file_version_tuple[0]}.{file_version_tuple[1]}.{file_version_tuple[2]}"
-            blender_text = f"Saved with: {file_version_string}"
-
-            info_text = f"{date_text} | {blender_text}" if date_text else blender_text
-            layout.label(text=info_text)
+            
+            row_version = layout.row()
+            row_version.label(text=f" {file_version_string}", icon='BLENDER')
 
             layout.separator()
 
-            # Note Text Area
+            # Note Text Area with Label
+            layout.label(text="Note:")
             box = layout.box()
             box.prop(current_note, "note", text="")
         
         layout.separator()
         
         # "Add Note" button
-        layout.operator(WM_OT_add_note.bl_idname, text="Create New Note")
+        layout.operator(WM_OT_add_note.bl_idname, text="Create New Version")
 
 # The Help & Links sub-panel
 class NOTES_PT_HelpLinksPanel(bpy.types.Panel):
@@ -290,3 +294,4 @@ def unregister():
 
 if __name__ == "__main__":
     register()
+
