@@ -70,6 +70,17 @@ class NoteItem(bpy.types.PropertyGroup):
         name="Frame Number",
         description="Current frame when the note was created"
     )
+    view_type: bpy.props.StringProperty(
+        name="View Type",
+        description="The type of view stored (CAMERA or VIEW)"
+    )
+    view_rotation: bpy.props.FloatVectorProperty(
+        name="View Rotation",
+        size=4 # Quaternion
+    )
+    view_distance: bpy.props.FloatProperty(
+        name="View Distance"
+    )
 
 # Scene properties to store the collection of notes
 class NotesSceneProperties(bpy.types.PropertyGroup):
@@ -94,11 +105,32 @@ class WM_OT_add_note(bpy.types.Operator):
         new_note = notes_props.notes.add()
         new_note.creation_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
         
-        # Capture camera and frame information
-        if context.scene.camera:
-            new_note.camera_name = context.scene.camera.name
-        else:
-            new_note.camera_name = "None"
+        # Find the active 3D viewport
+        view3d_space = None
+        for area in context.screen.areas:
+            if area.type == 'VIEW_3D':
+                view3d_space = area.spaces.active
+                break
+        
+        # Capture view information
+        if view3d_space and view3d_space.region_3d.view_perspective == 'CAMERA':
+            new_note.view_type = 'CAMERA'
+            if context.scene.camera:
+                new_note.camera_name = context.scene.camera.name
+            else:
+                new_note.camera_name = "None"
+        elif view3d_space: # It's a custom view (Ortho/Persp)
+            new_note.view_type = 'VIEW'
+            new_note.view_rotation = view3d_space.region_3d.view_rotation
+            new_note.view_distance = view3d_space.region_3d.view_distance
+            new_note.camera_name = "" # Clear camera name for custom views
+        else: # Fallback if no 3D view is found
+            new_note.view_type = 'CAMERA'
+            if context.scene.camera:
+                new_note.camera_name = context.scene.camera.name
+            else:
+                new_note.camera_name = "None"
+                
         new_note.frame_number = context.scene.frame_current
 
         notes_props.active_note_index = len(notes_props.notes) - 1
@@ -189,6 +221,26 @@ class WM_OT_set_active_camera(bpy.types.Operator):
             self.report({'WARNING'}, f"Camera '{self.camera_name}' not found.")
             return {'CANCELLED'}
 
+class WM_OT_restore_view(bpy.types.Operator):
+    """Restore the 3D viewport to the state stored in the note"""
+    bl_idname = "notes.restore_view"
+    bl_label = "Restore Viewport"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    rotation: bpy.props.FloatVectorProperty(size=4)
+    distance: bpy.props.FloatProperty()
+
+    def execute(self, context):
+        # Find a 3D view area and update its state
+        for area in context.screen.areas:
+            if area.type == 'VIEW_3D':
+                region_3d = area.spaces.active.region_3d
+                region_3d.view_perspective = 'PERSP' # Ensure not in camera view
+                region_3d.view_rotation = self.rotation
+                region_3d.view_distance = self.distance
+                break
+        return {'FINISHED'}
+
 # The UI Panel
 class NOTES_PT_main_panel(bpy.types.Panel):
     """Panel in the 3D View for notes"""
@@ -227,16 +279,23 @@ class NOTES_PT_main_panel(bpy.types.Panel):
             row_version = layout.row()
             row_version.label(text=f"Saved with: {file_version_string}", icon='BLENDER')
 
-            # Display Camera and Frame information
-            if current_note.camera_name and current_note.camera_name != "None":
-                row_cam = layout.row(align=True)
-                row_cam.label(text=f"Camera: {current_note.camera_name}", icon='CAMERA_DATA')
-                
-                if current_note.camera_name in bpy.data.objects:
-                    op = row_cam.operator(WM_OT_set_active_camera.bl_idname, text="", icon='VIEW_CAMERA')
-                    op.camera_name = current_note.camera_name
-                else:
-                    row_cam.label(text="", icon='ERROR')
+            # Display Camera or View information
+            if current_note.view_type == 'CAMERA':
+                if current_note.camera_name and current_note.camera_name != "None":
+                    row_cam = layout.row(align=True)
+                    row_cam.label(text=f"Camera: {current_note.camera_name}", icon='CAMERA_DATA')
+                    
+                    if current_note.camera_name in bpy.data.objects:
+                        op = row_cam.operator(WM_OT_set_active_camera.bl_idname, text="", icon='VIEW_CAMERA')
+                        op.camera_name = current_note.camera_name
+                    else:
+                        row_cam.label(text="", icon='ERROR')
+            elif current_note.view_type == 'VIEW':
+                row_view = layout.row(align=True)
+                row_view.label(text="Custom View Saved", icon='VIEW3D')
+                op = row_view.operator(WM_OT_restore_view.bl_idname, text="", icon='RESTRICT_VIEW_OFF')
+                op.rotation = current_note.view_rotation
+                op.distance = current_note.view_distance
 
             row_frame = layout.row(align=True)
             row_frame.label(text=f"Frame: {current_note.frame_number}", icon='SEQUENCE')
@@ -258,7 +317,7 @@ class NOTES_PT_main_panel(bpy.types.Panel):
 class NOTES_PT_HelpLinksPanel(bpy.types.Panel):
     bl_label = ""
     bl_parent_id = "NOTES_PT_main_panel"
-    bl_idname = "SNAPSHOT_PT_help_links"
+    bl_idname = "NOTES_PT_help_links"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_options = {'DEFAULT_CLOSED'}
@@ -331,6 +390,7 @@ classes = (
     WM_OT_delete_note,
     WM_OT_goto_frame,
     WM_OT_set_active_camera,
+    WM_OT_restore_view,
     NOTES_PT_main_panel,
     NOTES_PT_HelpLinksPanel,
 )
