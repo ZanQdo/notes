@@ -393,7 +393,7 @@ def draw_note_status(self, context):
         
         if last_note_text:
             version_prefix = f"V{last_note_index + 1} - "
-            total_max_length = 80
+            total_max_length = 160
             note_max_length = total_max_length - len(version_prefix)
 
             # Ensure note_max_length is not negative
