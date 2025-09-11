@@ -1,4 +1,5 @@
 import bpy
+import datetime
 
 # Handler for updating the panel's category name
 def update_panel_category(self, context):
@@ -57,6 +58,10 @@ class NoteItem(bpy.types.PropertyGroup):
         default="",
         update=update_status_bar # Trigger status bar update when note text changes
     )
+    creation_date: bpy.props.StringProperty(
+        name="Creation Date",
+        description="Date the note was created"
+    )
 
 # Scene properties to store the collection of notes
 class NotesSceneProperties(bpy.types.PropertyGroup):
@@ -79,6 +84,7 @@ class WM_OT_add_note(bpy.types.Operator):
     def execute(self, context):
         notes_props = context.scene.notes_properties
         new_note = notes_props.notes.add()
+        new_note.creation_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
         notes_props.active_note_index = len(notes_props.notes) - 1
         update_status_bar(self, context) # Manually update for new total
         return {'FINISHED'}
@@ -153,10 +159,21 @@ class NOTES_PT_main_panel(bpy.types.Panel):
             nav_row.operator(WM_OT_next_note.bl_idname, text="", icon='TRIA_RIGHT')
             nav_row.operator(WM_OT_delete_note.bl_idname, text="", icon='TRASH')
 
+            # Date and Blender Version Info
+            current_note = notes_props.notes[notes_props.active_note_index]
+            date_text = f"Date: {current_note.creation_date}" if current_note.creation_date else ""
+            
+            # Get the Blender version the file was saved with
+            file_version_tuple = bpy.data.version
+            file_version_string = f"{file_version_tuple[0]}.{file_version_tuple[1]}.{file_version_tuple[2]}"
+            blender_text = f"Saved with: {file_version_string}"
+
+            info_text = f"{date_text} | {blender_text}" if date_text else blender_text
+            layout.label(text=info_text)
+
             layout.separator()
 
             # Note Text Area
-            current_note = notes_props.notes[notes_props.active_note_index]
             box = layout.box()
             box.prop(current_note, "note", text="")
         
@@ -169,7 +186,7 @@ class NOTES_PT_main_panel(bpy.types.Panel):
 class NOTES_PT_HelpLinksPanel(bpy.types.Panel):
     bl_label = ""
     bl_parent_id = "NOTES_PT_main_panel"
-    bl_idname = "NOTES_PT_help_links"
+    bl_idname = "SNAPSHOT_PT_help_links"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_options = {'DEFAULT_CLOSED'}
@@ -273,4 +290,3 @@ def unregister():
 
 if __name__ == "__main__":
     register()
-
