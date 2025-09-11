@@ -209,6 +209,7 @@ class NOTES_PT_main_panel(bpy.types.Panel):
             nav_row.label(text=f"Note: {notes_props.active_note_index + 1} / {len(notes_props.notes)}")
             nav_row.operator(WM_OT_previous_note.bl_idname, text="", icon='TRIA_LEFT')
             nav_row.operator(WM_OT_next_note.bl_idname, text="", icon='TRIA_RIGHT')
+            nav_row.operator(WM_OT_add_note.bl_idname, text="", icon='ADD')
             nav_row.operator(WM_OT_delete_note.bl_idname, text="", icon='TRASH')
 
             # Date and Blender Version Info with Icons
@@ -247,8 +248,11 @@ class NOTES_PT_main_panel(bpy.types.Panel):
             box = layout.box()
             box.prop(current_note, "note", text="")
         
-        # "Add Note" button
-        layout.operator(WM_OT_add_note.bl_idname, text="Create New Note")
+        else:
+             # "Add Note" button when no notes exist
+            row = layout.row()
+            row.scale_y = 1.5
+            row.operator(WM_OT_add_note.bl_idname, text="Create New Note")
 
 # The Help & Links sub-panel
 class NOTES_PT_HelpLinksPanel(bpy.types.Panel):
