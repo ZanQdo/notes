@@ -8,6 +8,8 @@ def update_panel_category(self, context):
     bl_category attribute, and then re-registers it.
     """
     try:
+        # Unregister both panels to ensure a clean update
+        bpy.utils.unregister_class(NOTES_PT_HelpLinksPanel)
         bpy.utils.unregister_class(NOTES_PT_main_panel)
     except RuntimeError:
         pass
@@ -15,7 +17,9 @@ def update_panel_category(self, context):
     prefs = context.preferences.addons[__name__].preferences
     NOTES_PT_main_panel.bl_category = prefs.category_name
     
+    # Re-register both panels, parent first
     bpy.utils.register_class(NOTES_PT_main_panel)
+    bpy.utils.register_class(NOTES_PT_HelpLinksPanel)
     
 # Handler for updating the status bar
 def update_status_bar(self, context):
@@ -129,7 +133,7 @@ class WM_OT_delete_note(bpy.types.Operator):
 
 # The UI Panel
 class NOTES_PT_main_panel(bpy.types.Panel):
-    """Creates a Panel in the 3D View for notes"""
+    """Panel in the 3D View for notes"""
     bl_label = "Notes and Info"
     bl_idname = "NOTES_PT_main_panel"
     bl_space_type = 'VIEW_3D'
@@ -160,6 +164,35 @@ class NOTES_PT_main_panel(bpy.types.Panel):
         
         # "Add Note" button
         layout.operator(WM_OT_add_note.bl_idname, text="Create New Note")
+
+# The Help & Links sub-panel
+class NOTES_PT_HelpLinksPanel(bpy.types.Panel):
+    bl_label = ""
+    bl_parent_id = "NOTES_PT_main_panel"
+    bl_idname = "SNAPSHOT_PT_help_links"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw_header(self, context):
+        layout = self.layout
+        row = layout.row()
+        row.label(text='Help & Links', icon='HEART')
+
+    def draw(self, context):
+        layout = self.layout
+
+        row = layout.row()
+        row.operator('wm.url_open', text='Read the Manual', icon = 'HELP').url = 'https://superhivemarket.com/products/notes/docs'
+        row = layout.row()
+        row.operator('wm.url_open' ,text='Discover More!', icon = 'URL').url = 'http://blenderaddon.com'
+        row = layout.row()
+        row.operator('wm.url_open', text='Follow us on Twitter', icon = 'BOIDS').url = 'https://twitter.com/BlenderAddon'
+        row = layout.row()
+        row.operator('wm.url_open', text='Subscribe on Youtube', icon = 'PLAY').url = 'https://www.youtube.com/@blenderaddon'
+        row = layout.row()
+        row.operator('wm.url_open', text='Hire a Blender Expert', icon = 'BLENDER').url = 'https://www.patazanimation.com'
+
 
 # Function to draw the note version in the status bar
 def draw_note_status(self, context):
@@ -208,6 +241,7 @@ classes = (
     WM_OT_previous_note,
     WM_OT_delete_note,
     NOTES_PT_main_panel,
+    NOTES_PT_HelpLinksPanel,
 )
 
 def register():
@@ -224,13 +258,17 @@ def register():
 
 
 def unregister():
-    del bpy.types.Scene.notes_properties
-
+    # Remove the draw function from the status bar
+    bpy.types.STATUSBAR_HT_header.remove(draw_note_status)
+    
+    # Unregister all classes
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
         
-    # Remove the draw function from the status bar
-    bpy.types.STATUSBAR_HT_header.remove(draw_note_status)
+    # Delete the scene property after unregistering classes
+    # Add a check to prevent errors if it doesn't exist
+    if hasattr(bpy.types.Scene, 'notes_properties'):
+        del bpy.types.Scene.notes_properties
 
 
 if __name__ == "__main__":
