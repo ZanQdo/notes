@@ -103,6 +103,29 @@ class WM_OT_previous_note(bpy.types.Operator):
             notes_props.active_note_index -= 1
         return {'FINISHED'}
 
+class WM_OT_delete_note(bpy.types.Operator):
+    """Delete the current note"""
+    bl_idname = "notes.delete_note"
+    bl_label = "Delete Note"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        # Only allow deleting if there are notes
+        return len(context.scene.notes_properties.notes) > 0
+
+    def execute(self, context):
+        notes_props = context.scene.notes_properties
+        index = notes_props.active_note_index
+        
+        notes_props.notes.remove(index)
+        
+        # Adjust the active index if it's now out of bounds
+        if index >= len(notes_props.notes) and len(notes_props.notes) > 0:
+            notes_props.active_note_index = len(notes_props.notes) - 1
+            
+        update_status_bar(self, context)
+        return {'FINISHED'}
 
 # The UI Panel
 class NOTES_PT_main_panel(bpy.types.Panel):
@@ -122,20 +145,17 @@ class NOTES_PT_main_panel(bpy.types.Panel):
             # Navigation Row
             nav_row = layout.row(align=True)
             nav_row.label(text=f"Version: {notes_props.active_note_index + 1} / {len(notes_props.notes)}")
-            
-            op_row = nav_row.row(align=True)
-            op_row.operator(WM_OT_previous_note.bl_idname, text="-")
-            op_row.operator(WM_OT_next_note.bl_idname, text="+")
-            
+            nav_row.operator(WM_OT_previous_note.bl_idname, text="", icon='TRIA_LEFT')
+            nav_row.operator(WM_OT_next_note.bl_idname, text="", icon='TRIA_RIGHT')
+            nav_row.operator(WM_OT_delete_note.bl_idname, text="", icon='TRASH')
+
             layout.separator()
 
             # Note Text Area
             current_note = notes_props.notes[notes_props.active_note_index]
             box = layout.box()
             box.prop(current_note, "note", text="")
-        else:
-            layout.label(text="No notes yet. Create one!")
-            
+        
         layout.separator()
         
         # "Add Note" button
@@ -149,11 +169,12 @@ def draw_note_status(self, context):
     if len(notes_props.notes) > 0:
         layout.separator()
 
-        current_note_text = notes_props.notes[notes_props.active_note_index].note
+        last_note_index = len(notes_props.notes) - 1
+        last_note_text = notes_props.notes[last_note_index].note
         note_info = ""
         
-        if current_note_text:
-            version_prefix = f"Version: {notes_props.active_note_index + 1}. "
+        if last_note_text:
+            version_prefix = f"Version {last_note_index + 1} - "
             total_max_length = 80
             note_max_length = total_max_length - len(version_prefix)
 
@@ -162,16 +183,16 @@ def draw_note_status(self, context):
                 note_max_length = 0
             
             # Truncate the note if it's too long to fit in the status bar
-            if len(current_note_text) > note_max_length:
+            if len(last_note_text) > note_max_length:
                 # Replace newlines with spaces for single-line display
-                display_text = current_note_text.replace('\n', ' ')[:note_max_length] + "..."
+                display_text = last_note_text.replace('\n', ' ')[:note_max_length] + "..."
             else:
-                display_text = current_note_text.replace('\n', ' ')
+                display_text = last_note_text.replace('\n', ' ')
             
             note_info = f"{version_prefix}{display_text}"
         else:
             # If there's no note, just show the version number without a period
-            note_info = f"Version: {notes_props.active_note_index + 1}"
+            note_info = f"Version {last_note_index + 1}"
 
         # Display the actual note text in the status bar
         layout.label(text=note_info)
@@ -185,6 +206,7 @@ classes = (
     WM_OT_add_note,
     WM_OT_next_note,
     WM_OT_previous_note,
+    WM_OT_delete_note,
     NOTES_PT_main_panel,
 )
 
