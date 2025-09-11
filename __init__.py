@@ -93,6 +93,37 @@ class NotesSceneProperties(bpy.types.PropertyGroup):
         update=update_status_bar
     )
 
+# Helper function to restore context from a note
+def restore_note_context(context, note):
+    """
+    Sets the scene frame, camera, and view based on the provided note's properties.
+    """
+    # Set the frame
+    context.scene.frame_set(note.frame_number)
+
+    # Find a 3D viewport to modify
+    view3d_area = None
+    for area in context.screen.areas:
+        if area.type == 'VIEW_3D':
+            view3d_area = area
+            break
+    
+    if not view3d_area:
+        return # Cannot proceed without a 3D view
+
+    # Restore camera or custom view
+    if note.view_type == 'CAMERA':
+        cam_object = bpy.data.objects.get(note.camera_name)
+        if cam_object and cam_object.type == 'CAMERA':
+            context.scene.camera = cam_object
+            view3d_area.spaces.active.region_3d.view_perspective = 'CAMERA'
+    elif note.view_type == 'VIEW':
+        region_3d = view3d_area.spaces.active.region_3d
+        # We must set perspective to something other than CAMERA before changing rotation/distance
+        region_3d.view_perspective = 'PERSP' 
+        region_3d.view_rotation = note.view_rotation
+        region_3d.view_distance = note.view_distance
+
 # Operators for note management
 class WM_OT_add_note(bpy.types.Operator):
     """Add a new note"""
@@ -138,7 +169,7 @@ class WM_OT_add_note(bpy.types.Operator):
         return {'FINISHED'}
 
 class WM_OT_next_note(bpy.types.Operator):
-    """Go to the next note"""
+    """Go to the next note and restore its context"""
     bl_idname = "notes.next_note"
     bl_label = "Next Note"
     bl_options = {'REGISTER', 'UNDO'}
@@ -147,10 +178,13 @@ class WM_OT_next_note(bpy.types.Operator):
         notes_props = context.scene.notes_properties
         if notes_props.active_note_index < len(notes_props.notes) - 1:
             notes_props.active_note_index += 1
+            # Restore context for the new active note
+            current_note = notes_props.notes[notes_props.active_note_index]
+            restore_note_context(context, current_note)
         return {'FINISHED'}
 
 class WM_OT_previous_note(bpy.types.Operator):
-    """Go to the previous note"""
+    """Go to the previous note and restore its context"""
     bl_idname = "notes.previous_note"
     bl_label = "Previous Note"
     bl_options = {'REGISTER', 'UNDO'}
@@ -159,6 +193,9 @@ class WM_OT_previous_note(bpy.types.Operator):
         notes_props = context.scene.notes_properties
         if notes_props.active_note_index > 0:
             notes_props.active_note_index -= 1
+            # Restore context for the new active note
+            current_note = notes_props.notes[notes_props.active_note_index]
+            restore_note_context(context, current_note)
         return {'FINISHED'}
 
 class WM_OT_delete_note(bpy.types.Operator):
