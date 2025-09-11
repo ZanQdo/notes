@@ -169,7 +169,7 @@ class NOTES_PT_main_panel(bpy.types.Panel):
 class NOTES_PT_HelpLinksPanel(bpy.types.Panel):
     bl_label = ""
     bl_parent_id = "NOTES_PT_main_panel"
-    bl_idname = "SNAPSHOT_PT_help_links"
+    bl_idname = "NOTES_PT_help_links"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_options = {'DEFAULT_CLOSED'}
