@@ -62,6 +62,14 @@ class NoteItem(bpy.types.PropertyGroup):
         name="Creation Date",
         description="Date the note was created"
     )
+    camera_name: bpy.props.StringProperty(
+        name="Camera Name",
+        description="Active camera when the note was created"
+    )
+    frame_number: bpy.props.IntProperty(
+        name="Frame Number",
+        description="Current frame when the note was created"
+    )
 
 # Scene properties to store the collection of notes
 class NotesSceneProperties(bpy.types.PropertyGroup):
@@ -85,6 +93,14 @@ class WM_OT_add_note(bpy.types.Operator):
         notes_props = context.scene.notes_properties
         new_note = notes_props.notes.add()
         new_note.creation_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        # Capture camera and frame information
+        if context.scene.camera:
+            new_note.camera_name = context.scene.camera.name
+        else:
+            new_note.camera_name = "None"
+        new_note.frame_number = context.scene.frame_current
+
         notes_props.active_note_index = len(notes_props.notes) - 1
         update_status_bar(self, context) # Manually update for new total
         return {'FINISHED'}
@@ -137,6 +153,42 @@ class WM_OT_delete_note(bpy.types.Operator):
         update_status_bar(self, context)
         return {'FINISHED'}
 
+class WM_OT_goto_frame(bpy.types.Operator):
+    """Go to the frame this note was created on"""
+    bl_idname = "notes.goto_frame"
+    bl_label = "Go to Frame"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    frame: bpy.props.IntProperty()
+
+    def execute(self, context):
+        context.scene.frame_set(self.frame)
+        return {'FINISHED'}
+
+class WM_OT_set_active_camera(bpy.types.Operator):
+    """Set the active scene camera to the one stored in the note and enter its view"""
+    bl_idname = "notes.set_camera"
+    bl_label = "Set Active Camera"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    camera_name: bpy.props.StringProperty()
+
+    def execute(self, context):
+        cam_object = bpy.data.objects.get(self.camera_name)
+        if cam_object and cam_object.type == 'CAMERA':
+            context.scene.camera = cam_object
+            
+            # Find a 3D view area and switch to camera view
+            for area in context.screen.areas:
+                if area.type == 'VIEW_3D':
+                    area.spaces.active.region_3d.view_perspective = 'CAMERA'
+                    break # Exit the loop once a 3D view is found and updated
+                    
+            return {'FINISHED'}
+        else:
+            self.report({'WARNING'}, f"Camera '{self.camera_name}' not found.")
+            return {'CANCELLED'}
+
 # The UI Panel
 class NOTES_PT_main_panel(bpy.types.Panel):
     """Panel in the 3D View for notes"""
@@ -154,7 +206,7 @@ class NOTES_PT_main_panel(bpy.types.Panel):
         if len(notes_props.notes) > 0:
             # Navigation Row
             nav_row = layout.row(align=True)
-            nav_row.label(text=f"Version: {notes_props.active_note_index + 1} / {len(notes_props.notes)}")
+            nav_row.label(text=f"Note: {notes_props.active_note_index + 1} / {len(notes_props.notes)}")
             nav_row.operator(WM_OT_previous_note.bl_idname, text="", icon='TRIA_LEFT')
             nav_row.operator(WM_OT_next_note.bl_idname, text="", icon='TRIA_RIGHT')
             nav_row.operator(WM_OT_delete_note.bl_idname, text="", icon='TRASH')
@@ -174,17 +226,29 @@ class NOTES_PT_main_panel(bpy.types.Panel):
             row_version = layout.row()
             row_version.label(text=f"Saved with: {file_version_string}", icon='BLENDER')
 
-            layout.separator()
+            # Display Camera and Frame information
+            if current_note.camera_name and current_note.camera_name != "None":
+                row_cam = layout.row(align=True)
+                row_cam.label(text=f"Camera: {current_note.camera_name}", icon='CAMERA_DATA')
+                
+                if current_note.camera_name in bpy.data.objects:
+                    op = row_cam.operator(WM_OT_set_active_camera.bl_idname, text="", icon='VIEW_CAMERA')
+                    op.camera_name = current_note.camera_name
+                else:
+                    row_cam.label(text="", icon='ERROR')
+
+            row_frame = layout.row(align=True)
+            row_frame.label(text=f"Frame: {current_note.frame_number}", icon='SEQUENCE')
+            op = row_frame.operator(WM_OT_goto_frame.bl_idname, text="", icon='PLAY')
+            op.frame = current_note.frame_number
 
             # Note Text Area with Label and Icon
             layout.label(text="Note:", icon='TEXT')
             box = layout.box()
             box.prop(current_note, "note", text="")
         
-        layout.separator()
-        
         # "Add Note" button
-        layout.operator(WM_OT_add_note.bl_idname, text="Create New Version")
+        layout.operator(WM_OT_add_note.bl_idname, text="Create New Note")
 
 # The Help & Links sub-panel
 class NOTES_PT_HelpLinksPanel(bpy.types.Panel):
@@ -228,7 +292,7 @@ def draw_note_status(self, context):
         note_info = ""
         
         if last_note_text:
-            version_prefix = f"Version {last_note_index + 1} - "
+            version_prefix = f"V{last_note_index + 1} - "
             total_max_length = 80
             note_max_length = total_max_length - len(version_prefix)
 
@@ -246,7 +310,7 @@ def draw_note_status(self, context):
             note_info = f"{version_prefix}{display_text}"
         else:
             # If there's no note, just show the version number without a period
-            note_info = f"Version {last_note_index + 1}"
+            note_info = f"V{last_note_index + 1}"
 
         # Display the actual note text in the status bar
         layout.label(text=note_info)
@@ -261,6 +325,8 @@ classes = (
     WM_OT_next_note,
     WM_OT_previous_note,
     WM_OT_delete_note,
+    WM_OT_goto_frame,
+    WM_OT_set_active_camera,
     NOTES_PT_main_panel,
     NOTES_PT_HelpLinksPanel,
 )
@@ -284,7 +350,10 @@ def unregister():
     
     # Unregister all classes
     for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)
+        try:
+            bpy.utils.unregister_class(cls)
+        except RuntimeError:
+            pass # Ignore errors for classes that are already unregistered
         
     # Delete the scene property after unregistering classes
     # Add a check to prevent errors if it doesn't exist
