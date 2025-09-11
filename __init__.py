@@ -165,19 +165,19 @@ class NOTES_PT_main_panel(bpy.types.Panel):
             # Display date with clock icon in its own row
             if current_note.creation_date:
                 row_date = layout.row()
-                row_date.label(text=f" {current_note.creation_date}", icon='TIME')
+                row_date.label(text=f"Date: {current_note.creation_date}", icon='TIME')
 
             # Get the Blender version the file was saved with and display it in a new row
             file_version_tuple = bpy.data.version
             file_version_string = f"{file_version_tuple[0]}.{file_version_tuple[1]}.{file_version_tuple[2]}"
             
             row_version = layout.row()
-            row_version.label(text=f" {file_version_string}", icon='BLENDER')
+            row_version.label(text=f"Saved with: {file_version_string}", icon='BLENDER')
 
             layout.separator()
 
-            # Note Text Area with Label
-            layout.label(text="Note:")
+            # Note Text Area with Label and Icon
+            layout.label(text="Note:", icon='TEXT')
             box = layout.box()
             box.prop(current_note, "note", text="")
         
