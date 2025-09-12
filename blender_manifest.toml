@@ -1,6 +1,6 @@
 schema_version = "1.0.0"
 
-id = "snapshots"
+id = "notes"
 version = "1.0.0"
 name = "Notes"
 tagline = "Anotate your blend files"
