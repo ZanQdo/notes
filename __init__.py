@@ -350,34 +350,6 @@ class NOTES_PT_main_panel(bpy.types.Panel):
             row.scale_y = 1.5
             row.operator(WM_OT_add_note.bl_idname, text="Create New Note")
 
-# The Help & Links sub-panel
-class NOTES_PT_HelpLinksPanel(bpy.types.Panel):
-    bl_label = ""
-    bl_parent_id = "NOTES_PT_main_panel"
-    bl_idname = "NOTES_PT_help_links"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    def draw_header(self, context):
-        layout = self.layout
-        row = layout.row()
-        row.label(text='Help & Links', icon='HEART')
-
-    def draw(self, context):
-        layout = self.layout
-
-        row = layout.row()
-        row.operator('wm.url_open', text='Read the Manual', icon = 'HELP').url = 'https://superhivemarket.com/products/notes/docs'
-        row = layout.row()
-        row.operator('wm.url_open' ,text='Discover More!', icon = 'URL').url = 'http://blenderaddon.com'
-        row = layout.row()
-        row.operator('wm.url_open', text='Follow us on Twitter', icon = 'BOIDS').url = 'https://twitter.com/BlenderAddon'
-        row = layout.row()
-        row.operator('wm.url_open', text='Subscribe on Youtube', icon = 'PLAY').url = 'https://www.youtube.com/@blenderaddon'
-        row = layout.row()
-        row.operator('wm.url_open', text='Hire a Blender Expert', icon = 'BLENDER').url = 'https://www.patazanimation.com'
-
 
 # Function to draw the note version in the status bar
 def draw_note_status(self, context):
@@ -429,7 +401,6 @@ classes = (
     WM_OT_set_active_camera,
     WM_OT_restore_view,
     NOTES_PT_main_panel,
-    NOTES_PT_HelpLinksPanel,
 )
 
 def register():

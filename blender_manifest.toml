@@ -1,13 +1,13 @@
 schema_version = "1.0.0"
 
-id = "notes"
+id = "pataz_notes"
 version = "5.1.0"
-name = "Notes"
+name = "Pataz Notes"
 tagline = "Anotate your blend files"
 maintainer = "Daniel Salazar"
 type = "add-on"
 
-website = "https://superhivemarket.com/products/notes"
+website = "https://github.com/ZanQdo/notes"
 
 tags = ["Pipeline"]
 
@@ -15,5 +15,5 @@ blender_version_min = "4.2.0"
 
 license = ["SPDX:GPL-3.0-or-later"]
 
-copyright = ["2025 Daniel Salazar",]
+copyright = ["2026 Daniel Salazar",]
 
