@@ -9,18 +9,16 @@ def update_panel_category(self, context):
     bl_category attribute, and then re-registers it.
     """
     try:
-        # Unregister both panels to ensure a clean update
-        bpy.utils.unregister_class(NOTES_PT_HelpLinksPanel)
+        # Unregister the panel to ensure a clean update
         bpy.utils.unregister_class(NOTES_PT_main_panel)
     except RuntimeError:
         pass
 
-    prefs = context.preferences.addons[__name__].preferences
+    prefs = context.preferences.addons[__package__].preferences
     NOTES_PT_main_panel.bl_category = prefs.category_name
     
-    # Re-register both panels, parent first
+    # Re-register the panel
     bpy.utils.register_class(NOTES_PT_main_panel)
-    bpy.utils.register_class(NOTES_PT_HelpLinksPanel)
     
 # Handler for updating the status bar
 def update_status_bar(self, context):
@@ -36,7 +34,7 @@ def update_status_bar(self, context):
 
 # Addon Preferences
 class NotesAddonPreferences(bpy.types.AddonPreferences):
-    bl_idname = __name__
+    bl_idname = __package__
 
     category_name: bpy.props.StringProperty(
         name="Tab Name",
@@ -407,8 +405,9 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
         
-    prefs = bpy.context.preferences.addons[__name__].preferences
-    NOTES_PT_main_panel.bl_category = prefs.category_name
+    if __package__:
+        prefs = bpy.context.preferences.addons[__package__].preferences
+        NOTES_PT_main_panel.bl_category = prefs.category_name
 
     bpy.types.Scene.notes_properties = bpy.props.PointerProperty(type=NotesSceneProperties)
     
@@ -435,4 +434,3 @@ def unregister():
 
 if __name__ == "__main__":
     register()
-
