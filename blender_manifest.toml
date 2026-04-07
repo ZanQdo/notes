@@ -7,7 +7,7 @@ tagline = "Anotate your blend files"
 maintainer = "Daniel Salazar"
 type = "add-on"
 
-website = "https://github.com/ZanQdo/notes"
+website = "https://blenderaddon.com/"
 
 tags = ["Pipeline"]
 
