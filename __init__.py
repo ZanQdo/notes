@@ -1,31 +1,61 @@
 import bpy
 import datetime
 
+# Helper function to dynamically find the correct datablock based on the current context/window
+def get_target_id(context):
+    if not hasattr(context, "area") or not context.area:
+        return context.scene
+
+    area_type = context.area.type
+    
+    if area_type == 'NODE_EDITOR':
+        if hasattr(context.space_data, "node_tree") and context.space_data.node_tree:
+            return context.space_data.node_tree
+        elif hasattr(context.space_data, "edit_tree") and context.space_data.edit_tree:
+            return context.space_data.edit_tree
+    
+    elif area_type == 'DOPESHEET_EDITOR':
+        if hasattr(context.space_data, "action") and context.space_data.action:
+            return context.space_data.action
+        elif context.active_object and getattr(context.active_object.animation_data, "action", None):
+            return context.active_object.animation_data.action
+            
+    elif area_type == 'PROPERTIES':
+        sctx = getattr(context.space_data, "context", None)
+        if sctx == 'MATERIAL':
+            if context.active_object and getattr(context.active_object, "active_material", None):
+                return context.active_object.active_material
+        elif sctx == 'OBJECT':
+            return context.active_object
+        elif sctx == 'DATA':
+            if context.active_object and getattr(context.active_object, "data", None):
+                return context.active_object.data
+        elif sctx == 'SCENE':
+            return context.scene
+
+    # Default fallback for VIEW_3D and unhandled areas (Target the Scene)
+    return context.scene
+
+
 # Handler for updating the panel's category name
 def update_panel_category(self, context):
     """
-    This function is called when the 'category_name' property is updated
-    in the addon preferences. It unregisters the panel, updates its
-    bl_category attribute, and then re-registers it.
+    Unregisters and re-registers all contextual panels to update the tab name.
     """
-    try:
-        # Unregister the panel to ensure a clean update
-        bpy.utils.unregister_class(NOTES_PT_main_panel)
-    except RuntimeError:
-        pass
+    for cls in PANEL_CLASSES:
+        try:
+            bpy.utils.unregister_class(cls)
+        except RuntimeError:
+            pass
 
     prefs = context.preferences.addons[__package__].preferences
-    NOTES_PT_main_panel.bl_category = prefs.category_name
     
-    # Re-register the panel
-    bpy.utils.register_class(NOTES_PT_main_panel)
+    for cls in PANEL_CLASSES:
+        cls.bl_category = prefs.category_name
+        bpy.utils.register_class(cls)
     
 # Handler for updating the status bar
 def update_status_bar(self, context):
-    """
-    Forces a redraw of the status bar area to ensure the note
-    version is updated visually.
-    """
     for window in context.window_manager.windows:
         for area in window.screen.areas:
             if area.type == 'STATUSBAR':
@@ -54,7 +84,7 @@ class NoteItem(bpy.types.PropertyGroup):
         name="Note",
         description="A single note entry",
         default="",
-        update=update_status_bar # Trigger status bar update when note text changes
+        update=update_status_bar
     )
     creation_date: bpy.props.StringProperty(
         name="Creation Date",
@@ -74,14 +104,14 @@ class NoteItem(bpy.types.PropertyGroup):
     )
     view_rotation: bpy.props.FloatVectorProperty(
         name="View Rotation",
-        size=4 # Quaternion
+        size=4 
     )
     view_distance: bpy.props.FloatProperty(
         name="View Distance"
     )
 
-# Scene properties to store the collection of notes
-class NotesSceneProperties(bpy.types.PropertyGroup):
+# Datablock properties to store the collection of notes
+class NotesDataProperties(bpy.types.PropertyGroup):
     notes: bpy.props.CollectionProperty(type=NoteItem)
     active_note_index: bpy.props.IntProperty(
         name="Active Note Index",
@@ -93,13 +123,8 @@ class NotesSceneProperties(bpy.types.PropertyGroup):
 
 # Helper function to restore context from a note
 def restore_note_context(context, note):
-    """
-    Sets the scene frame, camera, and view based on the provided note's properties.
-    """
-    # Set the frame
     context.scene.frame_set(note.frame_number)
 
-    # Find a 3D viewport to modify
     view3d_area = None
     for area in context.screen.areas:
         if area.type == 'VIEW_3D':
@@ -107,9 +132,8 @@ def restore_note_context(context, note):
             break
     
     if not view3d_area:
-        return # Cannot proceed without a 3D view
+        return 
 
-    # Restore camera or custom view
     if note.view_type == 'CAMERA':
         cam_object = bpy.data.objects.get(note.camera_name)
         if cam_object and cam_object.type == 'CAMERA':
@@ -117,43 +141,45 @@ def restore_note_context(context, note):
             view3d_area.spaces.active.region_3d.view_perspective = 'CAMERA'
     elif note.view_type == 'VIEW':
         region_3d = view3d_area.spaces.active.region_3d
-        # We must set perspective to something other than CAMERA before changing rotation/distance
         region_3d.view_perspective = 'PERSP' 
         region_3d.view_rotation = note.view_rotation
         region_3d.view_distance = note.view_distance
 
-# Operators for note management
+# Operators
 class WM_OT_add_note(bpy.types.Operator):
-    """Add a new note"""
+    """Add a new note to the active datablock"""
     bl_idname = "notes.add_note"
     bl_label = "Add Note"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        notes_props = context.scene.notes_properties
+        target_id = get_target_id(context)
+        if not target_id:
+            self.report({'WARNING'}, "No active datablock found for notes")
+            return {'CANCELLED'}
+
+        notes_props = target_id.notes_properties
         new_note = notes_props.notes.add()
         new_note.creation_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
         
-        # Find the active 3D viewport
         view3d_space = None
         for area in context.screen.areas:
             if area.type == 'VIEW_3D':
                 view3d_space = area.spaces.active
                 break
         
-        # Capture view information
         if view3d_space and view3d_space.region_3d.view_perspective == 'CAMERA':
             new_note.view_type = 'CAMERA'
             if context.scene.camera:
                 new_note.camera_name = context.scene.camera.name
             else:
                 new_note.camera_name = "None"
-        elif view3d_space: # It's a custom view (Ortho/Persp)
+        elif view3d_space: 
             new_note.view_type = 'VIEW'
             new_note.view_rotation = view3d_space.region_3d.view_rotation
             new_note.view_distance = view3d_space.region_3d.view_distance
-            new_note.camera_name = "" # Clear camera name for custom views
-        else: # Fallback if no 3D view is found
+            new_note.camera_name = ""
+        else: 
             new_note.view_type = 'CAMERA'
             if context.scene.camera:
                 new_note.camera_name = context.scene.camera.name
@@ -163,7 +189,7 @@ class WM_OT_add_note(bpy.types.Operator):
         new_note.frame_number = context.scene.frame_current
 
         notes_props.active_note_index = len(notes_props.notes) - 1
-        update_status_bar(self, context) # Manually update for new total
+        update_status_bar(self, context) 
         return {'FINISHED'}
 
 class WM_OT_next_note(bpy.types.Operator):
@@ -173,10 +199,12 @@ class WM_OT_next_note(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        notes_props = context.scene.notes_properties
+        target_id = get_target_id(context)
+        if not target_id: return {'CANCELLED'}
+        
+        notes_props = target_id.notes_properties
         if notes_props.active_note_index < len(notes_props.notes) - 1:
             notes_props.active_note_index += 1
-            # Restore context for the new active note
             current_note = notes_props.notes[notes_props.active_note_index]
             restore_note_context(context, current_note)
         return {'FINISHED'}
@@ -188,10 +216,12 @@ class WM_OT_previous_note(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        notes_props = context.scene.notes_properties
+        target_id = get_target_id(context)
+        if not target_id: return {'CANCELLED'}
+        
+        notes_props = target_id.notes_properties
         if notes_props.active_note_index > 0:
             notes_props.active_note_index -= 1
-            # Restore context for the new active note
             current_note = notes_props.notes[notes_props.active_note_index]
             restore_note_context(context, current_note)
         return {'FINISHED'}
@@ -204,16 +234,16 @@ class WM_OT_delete_note(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        # Only allow deleting if there are notes
-        return len(context.scene.notes_properties.notes) > 0
+        target = get_target_id(context)
+        return target and len(target.notes_properties.notes) > 0
 
     def execute(self, context):
-        notes_props = context.scene.notes_properties
+        target_id = get_target_id(context)
+        notes_props = target_id.notes_properties
         index = notes_props.active_note_index
         
         notes_props.notes.remove(index)
         
-        # Adjust the active index if it's now out of bounds
         if index >= len(notes_props.notes) and len(notes_props.notes) > 0:
             notes_props.active_note_index = len(notes_props.notes) - 1
             
@@ -225,7 +255,6 @@ class WM_OT_goto_frame(bpy.types.Operator):
     bl_idname = "notes.goto_frame"
     bl_label = "Go to Frame"
     bl_options = {'REGISTER', 'UNDO'}
-
     frame: bpy.props.IntProperty()
 
     def execute(self, context):
@@ -237,20 +266,16 @@ class WM_OT_set_active_camera(bpy.types.Operator):
     bl_idname = "notes.set_camera"
     bl_label = "Set Active Camera"
     bl_options = {'REGISTER', 'UNDO'}
-
     camera_name: bpy.props.StringProperty()
 
     def execute(self, context):
         cam_object = bpy.data.objects.get(self.camera_name)
         if cam_object and cam_object.type == 'CAMERA':
             context.scene.camera = cam_object
-            
-            # Find a 3D view area and switch to camera view
             for area in context.screen.areas:
                 if area.type == 'VIEW_3D':
                     area.spaces.active.region_3d.view_perspective = 'CAMERA'
-                    break # Exit the loop once a 3D view is found and updated
-                    
+                    break 
             return {'FINISHED'}
         else:
             self.report({'WARNING'}, f"Camera '{self.camera_name}' not found.")
@@ -261,37 +286,37 @@ class WM_OT_restore_view(bpy.types.Operator):
     bl_idname = "notes.restore_view"
     bl_label = "Restore Viewport"
     bl_options = {'REGISTER', 'UNDO'}
-
     rotation: bpy.props.FloatVectorProperty(size=4)
     distance: bpy.props.FloatProperty()
 
     def execute(self, context):
-        # Find a 3D view area and update its state
         for area in context.screen.areas:
             if area.type == 'VIEW_3D':
                 region_3d = area.spaces.active.region_3d
-                region_3d.view_perspective = 'PERSP' # Ensure not in camera view
+                region_3d.view_perspective = 'PERSP' 
                 region_3d.view_rotation = self.rotation
                 region_3d.view_distance = self.distance
                 break
         return {'FINISHED'}
 
-# The UI Panel
-class NOTES_PT_main_panel(bpy.types.Panel):
-    """Panel in the 3D View for notes"""
+# Base UI Panel to handle drawing logic
+class NotesPanelBase:
     bl_label = "Notes"
-    bl_idname = "NOTES_PT_main_panel"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
     bl_category = 'Notes'
+
+    @classmethod
+    def poll(cls, context):
+        return get_target_id(context) is not None
 
     def draw(self, context):
         layout = self.layout
-        notes_props = context.scene.notes_properties
+        target_id = get_target_id(context)
         
-        # Check if there are any notes
+        if not target_id: return
+            
+        notes_props = target_id.notes_properties
+        
         if len(notes_props.notes) > 0:
-            # Navigation Row
             nav_row = layout.row(align=True)
             nav_row.label(text=f"Note: {notes_props.active_note_index + 1} / {len(notes_props.notes)}")
             nav_row.operator(WM_OT_previous_note.bl_idname, text="", icon='TRIA_LEFT')
@@ -299,22 +324,18 @@ class NOTES_PT_main_panel(bpy.types.Panel):
             nav_row.operator(WM_OT_add_note.bl_idname, text="", icon='ADD')
             nav_row.operator(WM_OT_delete_note.bl_idname, text="", icon='TRASH')
 
-            # Date and Blender Version Info with Icons
             current_note = notes_props.notes[notes_props.active_note_index]
             
-            # Display date with clock icon in its own row
             if current_note.creation_date:
                 row_date = layout.row()
                 row_date.label(text=f"Date: {current_note.creation_date}", icon='TIME')
 
-            # Get the Blender version the file was saved with and display it in a new row
             file_version_tuple = bpy.data.version
             file_version_string = f"{file_version_tuple[0]}.{file_version_tuple[1]}.{file_version_tuple[2]}"
             
             row_version = layout.row()
             row_version.label(text=f"Saved with: {file_version_string}", icon='BLENDER')
 
-            # Display Camera or View information
             if current_note.view_type == 'CAMERA':
                 if current_note.camera_name and current_note.camera_name != "None":
                     row_cam = layout.row(align=True)
@@ -337,60 +358,105 @@ class NOTES_PT_main_panel(bpy.types.Panel):
             op = row_frame.operator(WM_OT_goto_frame.bl_idname, text="", icon='PLAY')
             op.frame = current_note.frame_number
 
-            # Note Text Area with Label and Icon
             layout.label(text="Note:", icon='TEXT')
-            box = layout.box()
-            box.prop(current_note, "note", text="")
+            col = layout.column()
+            
+            # Version check for Blender 5.2+ to utilize the textbox feature
+            if bpy.app.version >= (5, 2, 0):
+                col.textbox(current_note, "note")
+            else:
+                col.prop(current_note, "note", text="")
         
         else:
-             # "Add Note" button when no notes exist
             row = layout.row()
             row.scale_y = 1.5
             row.operator(WM_OT_add_note.bl_idname, text="Create New Note")
 
 
+# Sub-Panels targeting specific editor areas
+class NOTES_PT_view3d(NotesPanelBase, bpy.types.Panel):
+    bl_idname = "NOTES_PT_view3d"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+
+class NOTES_PT_action_editor(NotesPanelBase, bpy.types.Panel):
+    bl_idname = "NOTES_PT_action_editor"
+    bl_space_type = 'DOPESHEET_EDITOR'
+    bl_region_type = 'UI'
+
+class NOTES_PT_node_editor(NotesPanelBase, bpy.types.Panel):
+    bl_idname = "NOTES_PT_node_editor"
+    bl_space_type = 'NODE_EDITOR'
+    bl_region_type = 'UI'
+
+class NOTES_PT_properties_object(NotesPanelBase, bpy.types.Panel):
+    bl_idname = "NOTES_PT_properties_object"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = 'object'
+
+class NOTES_PT_properties_material(NotesPanelBase, bpy.types.Panel):
+    bl_idname = "NOTES_PT_properties_material"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = 'material'
+
+class NOTES_PT_properties_scene(NotesPanelBase, bpy.types.Panel):
+    bl_idname = "NOTES_PT_properties_scene"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = 'scene'
+
+
 # Function to draw the note version in the status bar
 def draw_note_status(self, context):
     layout = self.layout
-    notes_props = context.scene.notes_properties
+    # Always target the scene for the status bar display
+    target_id = context.scene
+
+    notes_props = getattr(target_id, "notes_properties", None)
     
-    if len(notes_props.notes) > 0:
+    if notes_props and len(notes_props.notes) > 0:
         layout.separator()
 
         last_note_index = len(notes_props.notes) - 1
         last_note_text = notes_props.notes[last_note_index].note
         note_info = ""
         
+        target_prefix = f"[{target_id.name}] "
+        
         if last_note_text:
             version_prefix = f"V{last_note_index + 1} - "
             total_max_length = 160
-            note_max_length = total_max_length - len(version_prefix)
+            note_max_length = total_max_length - len(version_prefix) - len(target_prefix)
 
-            # Ensure note_max_length is not negative
-            if note_max_length < 0:
-                note_max_length = 0
+            if note_max_length < 0: note_max_length = 0
             
-            # Truncate the note if it's too long to fit in the status bar
             if len(last_note_text) > note_max_length:
-                # Replace newlines with spaces for single-line display
                 display_text = last_note_text.replace('\n', ' ')[:note_max_length] + "..."
             else:
                 display_text = last_note_text.replace('\n', ' ')
             
-            note_info = f"{version_prefix}{display_text}"
+            note_info = f"{target_prefix}{version_prefix}{display_text}"
         else:
-            # If there's no note, just show the version number without a period
-            note_info = f"V{last_note_index + 1}"
+            note_info = f"{target_prefix}V{last_note_index + 1}"
 
-        # Display the actual note text in the status bar
-        layout.label(text=note_info)
+        layout.label(text=note_info, icon='TEXT')
 
 
-# Registration
+PANEL_CLASSES = [
+    NOTES_PT_view3d,
+    NOTES_PT_action_editor,
+    NOTES_PT_node_editor,
+    NOTES_PT_properties_object,
+    NOTES_PT_properties_material,
+    NOTES_PT_properties_scene,
+]
+
 classes = (
     NotesAddonPreferences,
     NoteItem,
-    NotesSceneProperties,
+    NotesDataProperties,
     WM_OT_add_note,
     WM_OT_next_note,
     WM_OT_previous_note,
@@ -398,7 +464,7 @@ classes = (
     WM_OT_goto_frame,
     WM_OT_set_active_camera,
     WM_OT_restore_view,
-    NOTES_PT_main_panel,
+    *PANEL_CLASSES
 )
 
 def register():
@@ -407,29 +473,26 @@ def register():
         
     if __package__:
         prefs = bpy.context.preferences.addons[__package__].preferences
-        NOTES_PT_main_panel.bl_category = prefs.category_name
+        for cls in PANEL_CLASSES:
+            cls.bl_category = prefs.category_name
 
-    bpy.types.Scene.notes_properties = bpy.props.PointerProperty(type=NotesSceneProperties)
+    # Register on base ID class so ALL datablocks inherit it
+    bpy.types.ID.notes_properties = bpy.props.PointerProperty(type=NotesDataProperties)
     
-    # Append the draw function to the status bar
     bpy.types.STATUSBAR_HT_header.append(draw_note_status)
 
 
 def unregister():
-    # Remove the draw function from the status bar
     bpy.types.STATUSBAR_HT_header.remove(draw_note_status)
     
-    # Unregister all classes
     for cls in reversed(classes):
         try:
             bpy.utils.unregister_class(cls)
         except RuntimeError:
-            pass # Ignore errors for classes that are already unregistered
+            pass 
         
-    # Delete the scene property after unregistering classes
-    # Add a check to prevent errors if it doesn't exist
-    if hasattr(bpy.types.Scene, 'notes_properties'):
-        del bpy.types.Scene.notes_properties
+    if hasattr(bpy.types.ID, 'notes_properties'):
+        del bpy.types.ID.notes_properties
 
 
 if __name__ == "__main__":
