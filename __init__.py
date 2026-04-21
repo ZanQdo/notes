@@ -370,7 +370,7 @@ class NotesPanelBase:
             op = row_frame.operator(WM_OT_goto_frame.bl_idname, text="", icon='PLAY')
             op.frame = current_note.frame_number
 
-            layout.label(text="Note:", icon='TEXT')
+            layout.label(text="Note:", icon='CURRENT_FILE')
             col = layout.column()
             
             # Version check for Blender 5.2+ to utilize the textbox feature
@@ -465,7 +465,7 @@ def draw_note_status(self, context):
         else:
             note_info = f"{target_prefix}V{last_note_index + 1}"
 
-        layout.label(text=note_info, icon='TEXT')
+        layout.label(text=note_info, icon='CURRENT_FILE')
 
 
 PANEL_CLASSES = [
