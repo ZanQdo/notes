@@ -486,6 +486,21 @@ classes = (
     *PANEL_CLASSES
 )
 
+# Comprehensive list covering modern (Blender 4.x+) and legacy strip classes
+STRIP_TYPES = (
+    'Sequence', 'SoundStrip', 'ColorStrip', 'MovieStrip', 'ImageStrip',
+    'EffectStrip', 'MetaStrip', 'SceneStrip', 'MaskStrip', 'ClipStrip', 'TextStrip',
+    'AdjustmentStrip', 'CrossStrip', 'GammaCrossStrip', 'MultiplyStrip',
+    'OverDropStrip', 'AlphaOverStrip', 'AlphaUnderStrip', 'WipeStrip', 'GlowStrip',
+    'TransformStrip', 'SpeedControlStrip', 'MulticamStrip', 'GaussianBlurStrip',
+    'ColorMixStrip', 'SoundSequence', 'ColorSequence', 'MovieSequence', 'ImageSequence',
+    'EffectSequence', 'MetaSequence', 'SceneSequence', 'MaskSequence', 'ClipSequence',
+    'TextSequence', 'AdjustmentSequence', 'CrossSequence', 'GammaCrossSequence',
+    'MultiplySequence', 'OverDropSequence', 'AlphaOverSequence', 'AlphaUnderSequence',
+    'WipeSequence', 'GlowSequence', 'TransformSequence', 'SpeedControlSequence',
+    'MulticamSequence', 'GaussianBlurSequence', 'ColorMixSequence'
+)
+
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -498,14 +513,11 @@ def register():
     # Register on base ID class so ALL datablocks inherit it
     bpy.types.ID.notes_properties = bpy.props.PointerProperty(type=NotesDataProperties)
     
-    # Register on Sequence class so sequencer strips inherit it (they are not ID datablocks)
-    if hasattr(bpy.types, 'Sequence'):
-        bpy.types.Sequence.notes_properties = bpy.props.PointerProperty(type=NotesDataProperties)
-        
-    # Catch any SoundStrip edge cases directly if available in the API
-    if hasattr(bpy.types, 'SoundStrip'):
-        bpy.types.SoundStrip.notes_properties = bpy.props.PointerProperty(type=NotesDataProperties)
-    
+    # Register explicitly on all specific sequence strip types
+    for s_type in STRIP_TYPES:
+        if hasattr(bpy.types, s_type):
+            setattr(getattr(bpy.types, s_type), 'notes_properties', bpy.props.PointerProperty(type=NotesDataProperties))
+            
     bpy.types.STATUSBAR_HT_header.append(draw_note_status)
 
 
@@ -521,11 +533,11 @@ def unregister():
     if hasattr(bpy.types.ID, 'notes_properties'):
         del bpy.types.ID.notes_properties
         
-    if hasattr(bpy.types.Sequence, 'notes_properties'):
-        del bpy.types.Sequence.notes_properties
-        
-    if hasattr(bpy.types, 'SoundStrip') and hasattr(bpy.types.SoundStrip, 'notes_properties'):
-        del bpy.types.SoundStrip.notes_properties
+    for s_type in STRIP_TYPES:
+        if hasattr(bpy.types, s_type):
+            cls = getattr(bpy.types, s_type)
+            if hasattr(cls, 'notes_properties'):
+                del cls.notes_properties
 
 
 if __name__ == "__main__":
