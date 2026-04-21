@@ -407,6 +407,12 @@ class NOTES_PT_properties_object(NotesPanelBase, bpy.types.Panel):
     bl_region_type = 'WINDOW'
     bl_context = 'object'
 
+class NOTES_PT_properties_data(NotesPanelBase, bpy.types.Panel):
+    bl_idname = "NOTES_PT_properties_data"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = 'data'
+
 class NOTES_PT_properties_material(NotesPanelBase, bpy.types.Panel):
     bl_idname = "NOTES_PT_properties_material"
     bl_space_type = 'PROPERTIES'
@@ -467,6 +473,7 @@ PANEL_CLASSES = [
     NOTES_PT_action_editor,
     NOTES_PT_node_editor,
     NOTES_PT_properties_object,
+    NOTES_PT_properties_data,
     NOTES_PT_properties_material,
     NOTES_PT_properties_scene,
     NOTES_PT_properties_strip,
