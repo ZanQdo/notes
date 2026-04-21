@@ -32,6 +32,11 @@ def get_target_id(context):
                 return context.active_object.data
         elif sctx == 'SCENE':
             return context.scene
+        elif sctx == 'STRIP':
+            strip = getattr(context, "active_sequence_strip", None)
+            if not strip and getattr(context.scene, "sequence_editor", None):
+                strip = context.scene.sequence_editor.active_strip
+            return strip
 
     # Default fallback for VIEW_3D and unhandled areas (Target the Scene)
     return context.scene
@@ -154,8 +159,8 @@ class WM_OT_add_note(bpy.types.Operator):
 
     def execute(self, context):
         target_id = get_target_id(context)
-        if not target_id:
-            self.report({'WARNING'}, "No active datablock found for notes")
+        if not target_id or not hasattr(target_id, "notes_properties"):
+            self.report({'WARNING'}, "Active datablock or strip does not support notes")
             return {'CANCELLED'}
 
         notes_props = target_id.notes_properties
@@ -200,7 +205,7 @@ class WM_OT_next_note(bpy.types.Operator):
 
     def execute(self, context):
         target_id = get_target_id(context)
-        if not target_id: return {'CANCELLED'}
+        if not target_id or not hasattr(target_id, "notes_properties"): return {'CANCELLED'}
         
         notes_props = target_id.notes_properties
         if notes_props.active_note_index < len(notes_props.notes) - 1:
@@ -217,7 +222,7 @@ class WM_OT_previous_note(bpy.types.Operator):
 
     def execute(self, context):
         target_id = get_target_id(context)
-        if not target_id: return {'CANCELLED'}
+        if not target_id or not hasattr(target_id, "notes_properties"): return {'CANCELLED'}
         
         notes_props = target_id.notes_properties
         if notes_props.active_note_index > 0:
@@ -235,10 +240,12 @@ class WM_OT_delete_note(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         target = get_target_id(context)
-        return target and len(target.notes_properties.notes) > 0
+        return target and hasattr(target, "notes_properties") and len(target.notes_properties.notes) > 0
 
     def execute(self, context):
         target_id = get_target_id(context)
+        if not target_id or not hasattr(target_id, "notes_properties"): return {'CANCELLED'}
+        
         notes_props = target_id.notes_properties
         index = notes_props.active_note_index
         
@@ -306,7 +313,9 @@ class NotesPanelBase:
 
     @classmethod
     def poll(cls, context):
-        return get_target_id(context) is not None
+        target = get_target_id(context)
+        # Safely ensure the target object actually supports and inherited the notes_properties pointer
+        return target is not None and hasattr(target, "notes_properties")
 
     def draw(self, context):
         layout = self.layout
@@ -314,7 +323,10 @@ class NotesPanelBase:
         
         if not target_id: return
             
-        notes_props = target_id.notes_properties
+        # Safer fallback to prevent panel draw errors if the pointer is missing
+        notes_props = getattr(target_id, "notes_properties", None)
+        if not notes_props:
+            return
         
         if len(notes_props.notes) > 0:
             nav_row = layout.row(align=True)
@@ -407,6 +419,12 @@ class NOTES_PT_properties_scene(NotesPanelBase, bpy.types.Panel):
     bl_region_type = 'WINDOW'
     bl_context = 'scene'
 
+class NOTES_PT_properties_strip(NotesPanelBase, bpy.types.Panel):
+    bl_idname = "NOTES_PT_properties_strip"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = 'strip'
+
 
 # Function to draw the note version in the status bar
 def draw_note_status(self, context):
@@ -451,6 +469,7 @@ PANEL_CLASSES = [
     NOTES_PT_properties_object,
     NOTES_PT_properties_material,
     NOTES_PT_properties_scene,
+    NOTES_PT_properties_strip,
 ]
 
 classes = (
@@ -479,6 +498,14 @@ def register():
     # Register on base ID class so ALL datablocks inherit it
     bpy.types.ID.notes_properties = bpy.props.PointerProperty(type=NotesDataProperties)
     
+    # Register on Sequence class so sequencer strips inherit it (they are not ID datablocks)
+    if hasattr(bpy.types, 'Sequence'):
+        bpy.types.Sequence.notes_properties = bpy.props.PointerProperty(type=NotesDataProperties)
+        
+    # Catch any SoundStrip edge cases directly if available in the API
+    if hasattr(bpy.types, 'SoundStrip'):
+        bpy.types.SoundStrip.notes_properties = bpy.props.PointerProperty(type=NotesDataProperties)
+    
     bpy.types.STATUSBAR_HT_header.append(draw_note_status)
 
 
@@ -493,6 +520,12 @@ def unregister():
         
     if hasattr(bpy.types.ID, 'notes_properties'):
         del bpy.types.ID.notes_properties
+        
+    if hasattr(bpy.types.Sequence, 'notes_properties'):
+        del bpy.types.Sequence.notes_properties
+        
+    if hasattr(bpy.types, 'SoundStrip') and hasattr(bpy.types.SoundStrip, 'notes_properties'):
+        del bpy.types.SoundStrip.notes_properties
 
 
 if __name__ == "__main__":
