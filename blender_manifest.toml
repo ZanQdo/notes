@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "pataz_notes"
-version = "5.2.0"
+version = "5.2.1"
 name = "Pataz Notes"
 tagline = "Anotate your blend files"
 maintainer = "Daniel Salazar"
